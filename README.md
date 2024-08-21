@@ -1,20 +1,25 @@
 # cleartext2
 
-cleartext2 is a reboot of [ClearText](https://github.com/bencwallace/cleartext). The goal of both these
-projects is to leverage modern deep learning techniques for NLP, in particular text simplification, in
-order to help students of English improve their reading comprehension skills.
+cleartext2 is a reboot of [ClearText](https://github.com/bencwallace/cleartext). ClearText was a proof-of-concept
+demonstrating how one could leverage modern deep learning techniques for NLP, in particular text simplification,
+to create a product to help students of English improve their reading comprehension skills. cleartext2 continues
+to investigate this idea but focuses on [lexical simplification](https://en.wikipedia.org/wiki/Lexical_simplification)
+while making use of newer developments in machine learning, particularly masked/bidirectional LLMs, which are a good
+fit for the task.
 
 cleartext2 can be thought of as a "simplification thesauraus": For a word in a given context, it tries to
 find a suitable "simple" replacement that makes sense in the same context. This allows students of English
 to read a text without having to refer to an English dictionary (which can often make the task of reading
 more difficult) or translation dictionaries, which take the student out of the language entirely.
 
-**Details**
+A fairly simple example where this might be useful is the following sentence:
 
-Unlike ClearText, which attempted to use sequence-to-sequence RNNs to perform syntactic simplification,
-cleartext2 performs [lexical simplification](https://en.wikipedia.org/wiki/Lexical_simplification) by
-taking advantage of advances in LLMs, in particular BERT-like encoder models, which are a good fit for
-the task.
+> The *erudite* counsel rose to address the court, his manner *grave* as he began to *broach* the subject of his client's alleged misdeeds.
+
+cleartext2 may help a student of English better understand the three italicized words. In the case of "erudite", cleartext2
+doesn't provide much of an advantage over a synonym dictionary, since this word has only one meaning. However, in the case of
+"grave" and "broach", cleartext2 incorporates context to disambiguate the word before providing a synonym that the student
+may already be familiar with (e.g. "serious" or "raise").
 
 > [!IMPORTANT]
 > cleartext2 is currently a simple prototype. There are a multitude of ways to approach this problem and there remain numerous experiments to run in order to identify the best approach to the task cleartext2 takes on.
