@@ -13,10 +13,10 @@ def score_word_frequency(word: str) -> float:
 class Pipeline:
     def __init__(
         self,
+        top_k: int,
+        likelihood_weight: float,
+        frequency_weight: float,
         model_name: str = "distilbert-base-uncased",
-        top_k: int = 100,
-        likelihood_weight: float = 0.5,
-        frequency_weight: float = 0.5,
     ):
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
         self._model = AutoModelForMaskedLM.from_pretrained(model_name)
@@ -50,29 +50,21 @@ class Pipeline:
         mask_token_logits = outputs.logits[0, mask_token_index, :]
         return F.softmax(mask_token_logits, dim=-1)
 
-    def top_scoring_tokens(
-        self,
-        masked_context: str,
-        top_k: int = 100,
-        likelihood_weight: float = 0.5,
-        frequency_weight: float = 0.5,
-    ) -> Dict[int, float]:
+    def top_scoring_tokens(self, masked_context: str, top_k: int = 100) -> Dict[int, float]:
         word_likelihoods = self.score_word_likelihood_from_context(masked_context)
         top_probs, top_indices = torch.topk(word_likelihoods, top_k)
         score_probs = top_probs[0]
         scores_freq = torch.tensor([score_word_frequency(self._tokenizer.decode([idx])) for idx in top_indices[0]])
-        return dict(
+        return list(
             zip(
                 top_indices[0],
-                likelihood_weight * score_probs + frequency_weight * scores_freq,
+                self._likelihood_weight * score_probs + self._frequency_weight * scores_freq,
             )
         )
 
     def predict(self, before: str, selection: str, after: str) -> Dict[str, float]:
         masked_context = self.mask_token_at_char_index(before, selection, after)
-        tok_to_score = self.top_scoring_tokens(
-            masked_context, self._top_k, self._likelihood_weight, self._frequency_weight
-        )
-        top_tok_idx = max(tok_to_score, key=lambda k: tok_to_score[k])
+        tok_to_score = self.top_scoring_tokens(masked_context, self._top_k)
+        top_tok_idx, top_tok_score = max(tok_to_score, key=lambda kv: kv[1])
         top_tok = self._tokenizer.decode([top_tok_idx])
-        return top_tok, tok_to_score[top_tok_idx].item()
+        return top_tok, top_tok_score.item()
