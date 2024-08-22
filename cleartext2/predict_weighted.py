@@ -18,7 +18,7 @@ class Pipeline:
         frequency_weight: float,
         model_name: str = "distilbert-base-uncased",
     ):
-        self._tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self._tokenizer = AutoTokenizer.from_pretrained(model_name, clean_up_tokenization_spaces=True)
         self._model = AutoModelForMaskedLM.from_pretrained(model_name)
 
         self._top_k = top_k

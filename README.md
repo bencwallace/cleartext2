@@ -24,6 +24,10 @@ may already be familiar with (e.g. "serious" or "raise").
 > [!IMPORTANT]
 > cleartext2 is currently a simple prototype. There are a multitude of ways to approach this problem and there remain numerous experiments to run in order to identify the best approach to the task cleartext2 takes on.
 
+## Experiments
+
+For more information, see [Experiments](experiments/README.md).
+
 ## Set up
 
 1. Set up the development environment using [Poetry](https://python-poetry.org/docs/#installation):

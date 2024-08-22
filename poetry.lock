@@ -1673,6 +1673,20 @@ anyio = ">=3.4.0,<5"
 full = ["httpx (>=0.22.0)", "itsdangerous", "jinja2", "python-multipart (>=0.0.7)", "pyyaml"]
 
 [[package]]
+name = "tabulate"
+version = "0.9.0"
+description = "Pretty-print tabular data"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "tabulate-0.9.0-py3-none-any.whl", hash = "sha256:024ca478df22e9340661486f85298cff5f6dcdba14f3813e8830015b9ed1948f"},
+    {file = "tabulate-0.9.0.tar.gz", hash = "sha256:0095b12bf5966de529c0feb1fa08671671b3368eec77d7ef7ab114be2c068b3c"},
+]
+
+[package.extras]
+widechars = ["wcwidth"]
+
+[[package]]
 name = "tokenizers"
 version = "0.19.1"
 description = ""
@@ -2264,4 +2278,4 @@ mecab = ["ipadic (>=1.0.0,<2.0.0)", "mecab-ko-dic (>=1.0.0,<2.0.0)", "mecab-pyth
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.10"
-content-hash = "e812e5663d98fa2f06af1eacf0efeefc8da891e5c876092a51e1378025cca08a"
+content-hash = "c0313ab3524da6aa48c02e904f127341fb1f0fe860d922c2cdab3934698721c0"
