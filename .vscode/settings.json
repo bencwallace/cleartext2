@@ -1,5 +1,4 @@
 {
-    "python.defaultInterpreterPath": ".venv/bin/python",
     "[python]": {
         "editor.defaultFormatter": "ms-python.black-formatter",
         "editor.formatOnSave": true,
@@ -14,5 +13,15 @@
     "isort.args": [
         "--profile",
         "black"
-    ]
+    ],
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/CVS": true,
+        "**/.DS_Store": true,
+        "**/Thumbs.db": true,
+        "**/.pytest_cache": true,
+        "**/__pycache__": true
+    }
 }
