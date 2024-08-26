@@ -14,4 +14,4 @@ overfit_batches: 0.0
 train_val_split: 0.9
 
 defaults:
-  - dataset: benchls.yaml
+  - data: benchls.yaml

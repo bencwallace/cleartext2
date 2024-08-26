@@ -4,6 +4,7 @@ import hydra
 import pytorch_lightning as pl
 import torch
 import wandb
+from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
@@ -62,14 +63,45 @@ def load_benchls(path, train_val_split: float, augment=False):
     return train, val
 
 
+class BenchLSDataset(Dataset):
+    def __init__(self, data, tokenizer):
+        self._data = data
+        self._tokenizer = tokenizer
+
+    def __len__(self):
+        return len(self._data)
+
+    def __getitem__(self, idx):
+        sent, targets = self._data[idx]
+        # TODO: consider tokenizing in __init__
+        inp = self._tokenizer(
+            sent,
+            padding="max_length",
+            truncation="do_not_truncate",  # could change position of mask token and hasn't been needed
+            return_tensors="pt",
+        )
+
+        inp["targets"] = nn.functional.one_hot(targets, self._tokenizer.vocab_size).sum(dim=0)  # multi-hot encoding
+
+        return inp
+
+
+def collate_fn(batch):
+    return {
+        "input_ids": torch.vstack([ex["input_ids"] for ex in batch]),
+        "attention_mask": torch.vstack([ex["attention_mask"] for ex in batch]),
+        "targets": torch.stack([ex["targets"] for ex in batch]),
+    }
+
+
 class BenchLSDataModule(pl.LightningDataModule):
     def __init__(
         self,
         tokenizer: PreTrainedTokenizer,
-        train_val_split: float,
         path: str,
+        train_val_split: float,
         batch_size: int,
-        num_workers: int,
+        num_workers: int = -1,
         augment: bool = True,
     ):
         super().__init__()
@@ -77,7 +109,7 @@ class BenchLSDataModule(pl.LightningDataModule):
         self._train_val_split = train_val_split
         self._path = path
         self._batch_size = batch_size
-        self._num_workers = num_workers
+        self._num_workers = num_workers if num_workers > 0 else os.cpu_count()
         self._augment = augment
 
     def _prepare_input(self, data):
@@ -118,37 +150,6 @@ class BenchLSDataModule(pl.LightningDataModule):
         return DataLoader(
             self.val, batch_size=self._batch_size, shuffle=False, collate_fn=collate_fn, num_workers=self._num_workers
         )
-
-
-class BenchLSDataset(Dataset):
-    def __init__(self, data, tokenizer):
-        self._data = data
-        self._tokenizer = tokenizer
-
-    def __len__(self):
-        return len(self._data)
-
-    def __getitem__(self, idx):
-        sent, targets = self._data[idx]
-        # TODO: consider tokenizing in __init__
-        inp = self._tokenizer(
-            sent,
-            padding="max_length",
-            truncation="do_not_truncate",  # could change position of mask token and hasn't been needed
-            return_tensors="pt",
-        )
-
-        inp["targets"] = nn.functional.one_hot(targets, self._tokenizer.vocab_size).sum(dim=0)  # multi-hot encoding
-
-        return inp
-
-
-def collate_fn(batch):
-    return {
-        "input_ids": torch.vstack([ex["input_ids"] for ex in batch]),
-        "attention_mask": torch.vstack([ex["attention_mask"] for ex in batch]),
-        "targets": torch.stack([ex["targets"] for ex in batch]),
-    }
 
 
 class DistilBertForLexicalSimplification(DistilBertPreTrainedModel):
@@ -209,9 +210,7 @@ def main(cfg: DictConfig):
 
     module = LexicalSimplificationModule(cfg.model_name)
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name, clean_up_tokenization_spaces=True)
-    dm = BenchLSDataModule(
-        tokenizer, cfg.train_val_split, cfg.dataset.path, cfg.batch_size, cfg.num_workers, cfg.dataset.augment
-    )
+    dm = instantiate(cfg.data, tokenizer=tokenizer)
     trainer.fit(module, dm)
 
 

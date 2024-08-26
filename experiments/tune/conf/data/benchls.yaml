@@ -1,0 +1,5 @@
+_target_: tune.BenchLSDataModule
+path: ${data_dir}/BenchLS.txt
+train_val_split: ${train_val_split}
+batch_size: ${batch_size}
+augment: True
