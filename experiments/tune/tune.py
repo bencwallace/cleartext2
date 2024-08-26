@@ -153,6 +153,7 @@ def main(cfg: DictConfig):
         max_epochs=cfg.max_epochs,
         limit_train_batches=cfg.limit_train_batches,
         log_every_n_steps=cfg.log_every_n_steps,
+        overfit_batches=cfg.overfit_batches,
     )
 
     module = LexicalSimplificationModule(cfg.model_name)

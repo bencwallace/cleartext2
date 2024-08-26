@@ -3,11 +3,11 @@ name = "cleartext2-tune"
 version = "0.1.0"
 description = ""
 authors = ["Ben Wallace <<bencwallace@gmail.com>>"]
-readme = "README.md"
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.10"
-torch = { version = "^1.9.0", source = "pytorch-cpu" }
+torch = { version = "^1.9.0", source = "pytorch-cu117" }
 transformers = "^4.44.0"
 numpy = "<2"
 pytorch-lightning = "*"
