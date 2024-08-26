@@ -10,6 +10,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from torch import nn
 from torch.utils.data import DataLoader, Dataset, random_split
+from torchmetrics.retrieval import RetrievalMAP, RetrievalPrecision
 from transformers import (
     AutoTokenizer,
     DistilBertModel,
@@ -176,6 +177,9 @@ class LexicalSimplificationModule(pl.LightningModule):
         self.model = DistilBertForLexicalSimplification.from_pretrained(model_name)
         self.loss_fn = nn.BCEWithLogitsLoss()
 
+        self.rmap = RetrievalMAP()
+        self.rprec = RetrievalPrecision()
+
     def forward(self, input_ids, attention_mask=None):
         return self.model(input_ids, attention_mask=attention_mask)
 
@@ -187,8 +191,19 @@ class LexicalSimplificationModule(pl.LightningModule):
 
     def validation_step(self, batch, _):
         output = self.model(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"])
+
         loss = self.loss_fn(output, batch["targets"].float())
         self.log("val/loss", loss)
+
+        preds = torch.sigmoid(output).flatten()
+        targets = batch["targets"].flatten()
+        indexes = torch.arange(output.size(0)).repeat_interleave(self.model.config.vocab_size)  # TODO: dying here
+
+        self.rmap(preds, targets, indexes=indexes)
+        self.rprec(preds, targets, indexes=indexes)
+        self.log("val/rMAP", self.rmap, on_step=False, on_epoch=True)
+        self.log("val/rPrec", self.rprec, on_step=False, on_epoch=True)
+
         return loss
 
     def configure_optimizers(self):
@@ -204,6 +219,7 @@ def main(cfg: DictConfig):
         callbacks=[ckpt_callback],
         max_epochs=cfg.max_epochs,
         limit_train_batches=cfg.limit_train_batches,
+        limit_val_batches=cfg.limit_val_batches,
         log_every_n_steps=cfg.log_every_n_steps,
         overfit_batches=cfg.overfit_batches,
     )

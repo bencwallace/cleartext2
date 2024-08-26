@@ -2,15 +2,15 @@ base_dir: ${hydra:runtime.cwd}
 data_dir: ${base_dir}/../../data
 
 project: lexical-simplification
-wandb_mode: online
+wandb_mode: disabled
 
 model_name: distilbert-base-uncased
-batch_size: 64
-num_workers: 16
-max_epochs: 5
-limit_train_batches: 1.0
-limit_val_batches: 1.0
-log_every_n_steps: 5
+batch_size: 1
+num_workers: 1
+max_epochs: 1
+limit_train_batches: 1
+limit_val_batches: 1
+log_every_n_steps: 1
 overfit_batches: 0.0
 train_val_split: 0.9
 
