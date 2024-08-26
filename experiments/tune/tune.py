@@ -18,8 +18,6 @@ from transformers import (
     PreTrainedTokenizer,
 )
 
-# TODO: check if fast tokenizers can be used
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
 wandb.require("core")
 
 
@@ -73,8 +71,15 @@ class BenchLSDataset(Dataset):
         return len(self._data)
 
     def __getitem__(self, idx):
-        sent, targets = self._data[idx]
-        # TODO: consider tokenizing in __init__
+        sent, word, pos, targets = self._data[idx]
+
+        # surround complex word with [SEP] tokens
+        # here we tokenize with str.split() for consistency with the BenchLS data
+        sent_toks = sent.lower().split()
+        word_toks = word.split()
+        # note that BenchLS sentences only contain a single, final [SEP] token
+        sent_toks[pos : pos + len(word_toks)] = ["[SEP]"] + word_toks + ["[SEP]"]
+        sent = " ".join(sent_toks)
         inp = self._tokenizer(
             sent,
             padding="max_length",
@@ -82,6 +87,11 @@ class BenchLSDataset(Dataset):
             return_tensors="pt",
         )
 
+        # TODO: use ranks to weight targets
+        targets = [
+            self._tokenizer(sub, add_special_tokens=False, return_tensors="pt")["input_ids"] for _, sub in targets
+        ]
+        targets = torch.tensor([t[0][0] for t in targets if t.numel() == 1])
         inp["targets"] = nn.functional.one_hot(targets, self._tokenizer.vocab_size).sum(dim=0)  # multi-hot encoding
 
         return inp
@@ -113,32 +123,8 @@ class BenchLSDataModule(pl.LightningDataModule):
         self._num_workers = num_workers if num_workers > 0 else os.cpu_count()
         self._augment = augment
 
-    def _prepare_input(self, data):
-        results = []
-        for sent, word, pos, targets in data:
-            # surround complex word with [SEP] tokens
-            # here we tokenize with str.split() for consistency with the BenchLS data
-            sent_toks = sent.lower().split()
-            word_toks = word.split()
-            # note that BenchLS sentences only contain a single, final [SEP] token
-            sent_toks[pos : pos + len(word_toks)] = ["[SEP]"] + word_toks + ["[SEP]"]
-            sent = " ".join(sent_toks)
-
-            # TODO: use ranks to weight targets
-            targets = [
-                self._tokenizer(sub, add_special_tokens=False, return_tensors="pt")["input_ids"] for _, sub in targets
-            ]
-            targets = torch.tensor([t[0][0] for t in targets if t.numel() == 1])
-            if targets.numel():
-                # for now only consider single token substitutions
-                results.append((sent, targets))
-
-        return results
-
     def setup(self, stage: str):
         train, val = load_benchls(self._path, self._train_val_split, augment=self._augment)
-        train = self._prepare_input(train)
-        val = self._prepare_input(val)
         self.train = BenchLSDataset(train, self._tokenizer)
         self.val = BenchLSDataset(val, self._tokenizer)
 
