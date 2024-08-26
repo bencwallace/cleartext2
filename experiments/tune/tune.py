@@ -62,10 +62,31 @@ def load_benchls(path, train_val_split: float, augment=False):
     return train, val
 
 
+def mask_sentence(sent, word, pos):
+    # replace complex word with [MASK] token
+    sent_toks = sent.lower().split()
+    word_toks = word.split()
+    sent_toks[pos : pos + len(word_toks)] = ["[MASK]"]
+    return " ".join(sent_toks)
+
+
+def tag_sentence(sent, word, pos):
+    # surround complex word with [SEP] tokens
+    # here we tokenize with str.split() for consistency with the BenchLS data
+    sent_toks = sent.lower().split()
+    word_toks = word.split()
+    # note that BenchLS sentences only contain a single, final [SEP] token
+    sent_toks[pos : pos + len(word_toks)] = ["[SEP]"] + word_toks + ["[SEP]"]
+    return " ".join(sent_toks)
+
+
 class BenchLSDataset(Dataset):
-    def __init__(self, data, tokenizer):
+    def __init__(self, data, tokenizer, mode="mask"):
         self._data = data
         self._tokenizer = tokenizer
+        if mode not in ["mask", "tag"]:
+            raise ValueError(f"Invalid mode: {mode}")
+        self._mode = mode
 
     def __len__(self):
         return len(self._data)
@@ -73,13 +94,11 @@ class BenchLSDataset(Dataset):
     def __getitem__(self, idx):
         sent, word, pos, targets = self._data[idx]
 
-        # surround complex word with [SEP] tokens
-        # here we tokenize with str.split() for consistency with the BenchLS data
-        sent_toks = sent.lower().split()
-        word_toks = word.split()
-        # note that BenchLS sentences only contain a single, final [SEP] token
-        sent_toks[pos : pos + len(word_toks)] = ["[SEP]"] + word_toks + ["[SEP]"]
-        sent = " ".join(sent_toks)
+        if self._mode == "mask":
+            sent = mask_sentence(sent, word, pos)
+        else:
+            sent = tag_sentence(sent, word, pos)
+
         inp = self._tokenizer(
             sent,
             padding="max_length",
