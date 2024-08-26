@@ -4,12 +4,11 @@ import hydra
 import pytorch_lightning as pl
 import torch
 import wandb
-from hydra.utils import instantiate
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from torch import nn
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, random_split
 from transformers import (
     AutoTokenizer,
     DistilBertModel,
@@ -40,7 +39,7 @@ def _augment_benchls(data):
     return augmented
 
 
-def load_benchls(path, augment=False):
+def load_benchls(path, train_val_split: float, augment=False):
     with open(path) as f:
         lines = f.readlines()
 
@@ -53,15 +52,36 @@ def load_benchls(path, augment=False):
             targets[i] = (int(rank), sub)
         data.append((sent, word.strip(), int(pos), targets))
 
+    # important to split prior to augmenting
+    train_size = int(train_val_split * len(data))
+    val_size = len(data) - train_size
+    train, val = random_split(data, [train_size, val_size])
     if augment:
-        data = _augment_benchls(data)
-    return data
+        train = _augment_benchls(train)
+        val = _augment_benchls(val)
+    return train, val
 
 
-class BenchLSDataset(Dataset):
-    def __init__(self, tokenizer: PreTrainedTokenizer, path: str, augment: bool = True):
-        data = load_benchls(path, augment=augment)
-        self._data = []
+class BenchLSDataModule(pl.LightningDataModule):
+    def __init__(
+        self,
+        tokenizer: PreTrainedTokenizer,
+        train_val_split: float,
+        path: str,
+        batch_size: int,
+        num_workers: int,
+        augment: bool = True,
+    ):
+        super().__init__()
+        self._tokenizer = tokenizer
+        self._train_val_split = train_val_split
+        self._path = path
+        self._batch_size = batch_size
+        self._num_workers = num_workers
+        self._augment = augment
+
+    def _prepare_input(self, data):
+        results = []
         for sent, word, pos, targets in data:
             # surround complex word with [SEP] tokens
             # here we tokenize with str.split() for consistency with the BenchLS data
@@ -72,12 +92,37 @@ class BenchLSDataset(Dataset):
             sent = " ".join(sent_toks)
 
             # TODO: use ranks to weight targets
-            targets = [tokenizer(sub, add_special_tokens=False, return_tensors="pt")["input_ids"] for _, sub in targets]
+            targets = [
+                self._tokenizer(sub, add_special_tokens=False, return_tensors="pt")["input_ids"] for _, sub in targets
+            ]
             targets = torch.tensor([t[0][0] for t in targets if t.numel() == 1])
             if targets.numel():
                 # for now only consider single token substitutions
-                self._data.append((sent, targets))
+                results.append((sent, targets))
 
+        return results
+
+    def setup(self, stage: str):
+        train, val = load_benchls(self._path, self._train_val_split, augment=self._augment)
+        train = self._prepare_input(train)
+        val = self._prepare_input(val)
+        self.train = BenchLSDataset(train, self._tokenizer)
+        self.val = BenchLSDataset(val, self._tokenizer)
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.train, batch_size=self._batch_size, shuffle=True, collate_fn=collate_fn, num_workers=self._num_workers
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            self.val, batch_size=self._batch_size, shuffle=False, collate_fn=collate_fn, num_workers=self._num_workers
+        )
+
+
+class BenchLSDataset(Dataset):
+    def __init__(self, data, tokenizer):
+        self._data = data
         self._tokenizer = tokenizer
 
     def __len__(self):
@@ -139,6 +184,12 @@ class LexicalSimplificationModule(pl.LightningModule):
         self.log("train/loss", loss)
         return loss
 
+    def validation_step(self, batch, _):
+        output = self.model(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"])
+        loss = self.loss_fn(output, batch["targets"].float())
+        self.log("val/loss", loss)
+        return loss
+
     def configure_optimizers(self):
         return torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
@@ -146,7 +197,7 @@ class LexicalSimplificationModule(pl.LightningModule):
 @hydra.main(version_base=None, config_path="conf", config_name="tune")
 def main(cfg: DictConfig):
     ckpt_callback = ModelCheckpoint(save_top_k=0, save_last=False)
-    logger = WandbLogger(project=cfg.project, mode=cfg.wandb_mode)
+    logger = WandbLogger(project=cfg.project, mode=cfg.wandb_mode, config=OmegaConf.to_container(cfg, resolve=True))
     trainer = pl.Trainer(
         logger=logger,
         callbacks=[ckpt_callback],
@@ -158,11 +209,10 @@ def main(cfg: DictConfig):
 
     module = LexicalSimplificationModule(cfg.model_name)
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name, clean_up_tokenization_spaces=True)
-    dataset = instantiate(cfg.dataset, tokenizer=tokenizer)
-    loader = DataLoader(
-        dataset, batch_size=cfg.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=cfg.num_workers
+    dm = BenchLSDataModule(
+        tokenizer, cfg.train_val_split, cfg.dataset.path, cfg.batch_size, cfg.num_workers, cfg.dataset.augment
     )
-    trainer.fit(module, loader)
+    trainer.fit(module, dm)
 
 
 if __name__ == "__main__":
