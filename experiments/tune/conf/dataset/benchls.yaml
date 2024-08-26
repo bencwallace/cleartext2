@@ -1,0 +1,3 @@
+_target_: tune.BenchLSDataset
+path: ${data_dir}/BenchLS.txt
+augment: True
