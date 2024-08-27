@@ -6,13 +6,15 @@ wandb_mode: disabled
 
 model_name: distilbert-base-uncased
 batch_size: 1
-num_workers: 1
+num_workers: 0
 max_epochs: 1
-limit_train_batches: 1
+limit_train_batches: 10
 limit_val_batches: 1
 log_every_n_steps: 1
 overfit_batches: 0.0
 train_val_split: 0.9
+freeze: True
+lr: 2e-5
 
 defaults:
   - data: benchls.yaml
