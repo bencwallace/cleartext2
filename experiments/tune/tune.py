@@ -165,11 +165,14 @@ class TaggedLS(DistilBertPreTrainedModel):
 
 
 class LexicalSimplificationModule(pl.LightningModule):
-    def __init__(self, model_name="distilbert-base-uncased", lr=2e-5):
+    def __init__(self, model_name="distilbert-base-uncased", freeze: bool = True, lr=2e-5):
         super().__init__()
 
         self._lr = lr
         self.model = AutoModelForMaskedLM.from_pretrained(model_name)
+        if freeze:
+            for param in self.model.distilbert.parameters():
+                param.requires_grad = False
         self.loss_fn = nn.BCEWithLogitsLoss()
 
         self.rmap = RetrievalMAP(top_k=10)
@@ -226,7 +229,7 @@ def main(cfg: DictConfig):
         overfit_batches=cfg.overfit_batches,
     )
 
-    module = LexicalSimplificationModule(cfg.model_name)
+    module = LexicalSimplificationModule(cfg.model_name, freeze=cfg.freeze, lr=cfg.lr)
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name, clean_up_tokenization_spaces=True)
     dm = instantiate(cfg.data, tokenizer=tokenizer)
     trainer.fit(module, dm)
