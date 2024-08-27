@@ -16,6 +16,7 @@ train_val_split: 0.9
 freeze: True
 lr: 2e-5
 top_k: 10
+mask: True
 
 defaults:
   - data: benchls.yaml

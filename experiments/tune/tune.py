@@ -125,6 +125,7 @@ class BenchLSDataModule(pl.LightningDataModule):
         batch_size: int,
         num_workers: int = -1,
         augment: bool = True,
+        mask: bool = False,
     ):
         super().__init__()
         self._tokenizer = tokenizer
@@ -133,11 +134,12 @@ class BenchLSDataModule(pl.LightningDataModule):
         self._batch_size = batch_size
         self._num_workers = num_workers if num_workers > 0 else os.cpu_count()
         self._augment = augment
+        self._mask = mask
 
     def setup(self, stage: str):
         train, val = load_benchls(self._path, self._train_val_split, augment=self._augment)
-        self.train = BenchLSDataset(train, self._tokenizer)
-        self.val = BenchLSDataset(val, self._tokenizer)
+        self.train = BenchLSDataset(train, self._tokenizer, mask=self._mask)
+        self.val = BenchLSDataset(val, self._tokenizer, mask=self._mask)
 
     def train_dataloader(self):
         return DataLoader(
