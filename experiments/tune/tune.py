@@ -72,9 +72,10 @@ def mask_sentence(sent, word, pos):
 
 
 class BenchLSDataset(Dataset):
-    def __init__(self, data, tokenizer):
+    def __init__(self, data, tokenizer, mask: bool = False):
         self._data = data
         self._tokenizer = tokenizer
+        self._mask = mask
 
     def __len__(self):
         return len(self._data)
@@ -89,6 +90,8 @@ class BenchLSDataset(Dataset):
             return_tensors="pt",
         )
         pos = torch.where(inp["input_ids"] == self._tokenizer.mask_token_id)[1]
+        if not self._mask:
+            inp["input_ids"][0][pos] = self._tokenizer.convert_tokens_to_ids(word)
         inp["positions"] = pos
 
         # TODO: use ranks to weight targets
