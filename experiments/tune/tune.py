@@ -168,7 +168,7 @@ class TaggedLS(DistilBertPreTrainedModel):
 
 
 class LexicalSimplificationModule(pl.LightningModule):
-    def __init__(self, model_name="distilbert-base-uncased", freeze: bool = True, lr=2e-5):
+    def __init__(self, model_name="distilbert-base-uncased", freeze: bool = True, lr=2e-5, top_k=10):
         super().__init__()
 
         self._lr = lr
@@ -178,9 +178,10 @@ class LexicalSimplificationModule(pl.LightningModule):
                 param.requires_grad = False
         self.loss_fn = nn.BCEWithLogitsLoss()
 
-        self.rmap = RetrievalMAP(top_k=10)
-        self.rprec = RetrievalPrecision(top_k=10)
-        self.rrec = RetrievalRecall(top_k=10)
+        self._top_k = top_k
+        self.rmap = RetrievalMAP(top_k=top_k)
+        self.rprec = RetrievalPrecision(top_k=top_k)
+        self.rrec = RetrievalRecall(top_k=top_k)
 
     def forward(self, input_ids, attention_mask=None):
         return self.model(input_ids, attention_mask=attention_mask)
@@ -206,9 +207,9 @@ class LexicalSimplificationModule(pl.LightningModule):
         self.rmap(preds, targets, indexes=indexes)
         self.rprec(preds, targets, indexes=indexes)
         self.rrec(preds, targets, indexes=indexes)
-        self.log("val/rMAP", self.rmap, on_step=False, on_epoch=True)
-        self.log("val/rPrec", self.rprec, on_step=False, on_epoch=True)
-        self.log("val/rRec", self.rrec, on_step=False, on_epoch=True)
+        self.log(f"val/rMAP@k={self._top_k}", self.rmap, on_step=False, on_epoch=True)
+        self.log(f"val/rPrec@k={self._top_k}", self.rprec, on_step=False, on_epoch=True)
+        self.log(f"val/rRec@k={self._top_k}", self.rrec, on_step=False, on_epoch=True)
 
         return loss
 
@@ -232,7 +233,7 @@ def main(cfg: DictConfig):
         overfit_batches=cfg.overfit_batches,
     )
 
-    module = LexicalSimplificationModule(cfg.model_name, freeze=cfg.freeze, lr=cfg.lr)
+    module = LexicalSimplificationModule(cfg.model_name, freeze=cfg.freeze, lr=cfg.lr, top_k=cfg.top_k)
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name, clean_up_tokenization_spaces=True)
     dm = instantiate(cfg.data, tokenizer=tokenizer)
     trainer.fit(module, dm)
