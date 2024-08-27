@@ -71,45 +71,24 @@ def mask_sentence(sent, word, pos):
     return " ".join(sent_toks)
 
 
-def tag_sentence(sent, word, pos):
-    # surround complex word with [SEP] tokens
-    # here we tokenize with str.split() for consistency with the BenchLS data
-    sent_toks = sent.lower().split()
-    word_toks = word.split()
-    # note that BenchLS sentences only contain a single, final [SEP] token
-    sent_toks[pos : pos + len(word_toks)] = ["[SEP]"] + word_toks + ["[SEP]"]
-    return " ".join(sent_toks)
-
-
 class BenchLSDataset(Dataset):
-    def __init__(self, data, tokenizer, mode="mask"):
+    def __init__(self, data, tokenizer):
         self._data = data
         self._tokenizer = tokenizer
-        if mode not in ["mask", "tag"]:
-            raise ValueError(f"Invalid mode: {mode}")
-        self._mode = mode
 
     def __len__(self):
         return len(self._data)
 
     def __getitem__(self, idx):
         sent, word, pos, targets = self._data[idx]
-
-        if self._mode == "mask":
-            sent = mask_sentence(sent, word, pos)
-        else:
-            sent = tag_sentence(sent, word, pos)
-
+        sent = mask_sentence(sent, word, pos)
         inp = self._tokenizer(
             sent,
             padding="max_length",
             truncation="do_not_truncate",  # could change position of mask token and hasn't been needed
             return_tensors="pt",
         )
-        if self._mode == "mask":
-            pos = torch.where(inp["input_ids"] == self._tokenizer.mask_token_id)[1]
-        else:
-            pos = 1 + torch.where(inp["input_ids"] == self._tokenizer.sep_token_id)[1]
+        pos = torch.where(inp["input_ids"] == self._tokenizer.mask_token_id)[1]
         inp["positions"] = pos
 
         # TODO: use ranks to weight targets
@@ -186,16 +165,11 @@ class TaggedLS(DistilBertPreTrainedModel):
 
 
 class LexicalSimplificationModule(pl.LightningModule):
-    def __init__(self, model_name="distilbert-base-uncased", lr=2e-5, mode="mask"):
+    def __init__(self, model_name="distilbert-base-uncased", lr=2e-5):
         super().__init__()
 
         self._lr = lr
-        if mode not in ["tag", "mask"]:
-            raise ValueError(f"Invalid mode: {mode}")
-        elif mode == "tag":
-            self.model = TaggedLS.from_pretrained(model_name)
-        else:
-            self.model = AutoModelForMaskedLM.from_pretrained(model_name)
+        self.model = AutoModelForMaskedLM.from_pretrained(model_name)
         self.loss_fn = nn.BCEWithLogitsLoss()
 
         self.rmap = RetrievalMAP(top_k=10)
