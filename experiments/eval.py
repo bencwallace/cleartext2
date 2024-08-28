@@ -1,9 +1,19 @@
+import argparse
 import csv
+from typing import NamedTuple, Optional
 
+import torch
 from tabulate import tabulate
 from tqdm import tqdm
 
 from cleartext2.predict_weighted import Pipeline
+
+
+class Params(NamedTuple):
+    top_k: int
+    likelihood_weight: float
+    frequency_weight: float
+    model_path: Optional[str] = None
 
 
 def load_mturk():
@@ -41,8 +51,15 @@ class EvalPipeline:
         top_k: int,
         likelihood_weight: float,
         frequency_weight: float,
+        model_path: Optional[str] = None,
     ):
         pipeline = Pipeline(top_k=top_k, likelihood_weight=likelihood_weight, frequency_weight=frequency_weight)
+        if model_path:
+            state_dict = torch.load(model_path, map_location="cpu")
+            prefixes = ["vocab_transform", "vocab_layer_norm", "vocab_projector"]
+            for prefix in prefixes:
+                sd = {k[len(f"{prefix}.") :]: v for k, v in state_dict.items() if k.startswith(prefix)}
+                getattr(pipeline._model, prefix).load_state_dict(sd)
 
         changed_count = 0
         changed_freq = 0
@@ -73,19 +90,26 @@ class EvalPipeline:
         return {"prec": prec, "prec_top_k": prec_top_k, "acc": acc, "changed": changed_freq}
 
 
-def main():
-    top_ks = [1, 3, 5, 10]
-    likelihood_weights = [0] * len(top_ks)
-    frequency_weights = [1] * len(top_ks)
-
+def main(model_path):
+    params = [
+        Params(top_k=1, likelihood_weight=0, frequency_weight=1, model_path=None),
+        Params(top_k=3, likelihood_weight=0, frequency_weight=1, model_path=None),
+        Params(top_k=1, likelihood_weight=0, frequency_weight=1, model_path=model_path),
+        Params(top_k=3, likelihood_weight=0, frequency_weight=1, model_path=model_path),
+        Params(top_k=1, likelihood_weight=1, frequency_weight=0, model_path=model_path),
+        Params(top_k=3, likelihood_weight=1, frequency_weight=0, model_path=model_path),
+    ]
     pipeline = EvalPipeline()
     results = []
     # TODO: redundant to iterate over top_ks in this way
-    for top_k, likelihood_wt, freq_wt in zip(top_ks, likelihood_weights, frequency_weights):
-        metrics = pipeline.eval_case(top_k=top_k, likelihood_weight=likelihood_wt, frequency_weight=freq_wt)
-        results.append({"top_k": top_k, **metrics})
+    for top_k, likelihood_wt, freq_wt, path in params:
+        metrics = pipeline.eval_case(
+            top_k=top_k, likelihood_weight=likelihood_wt, frequency_weight=freq_wt, model_path=path
+        )
+        results.append({"fine_tuned": path is not None, "top_k": top_k, **metrics})
     print(tabulate(results, headers="keys", floatfmt=".2%"))
 
 
 if __name__ == "__main__":
-    main()
+    model_path = "../checkpoints/clf_dict.ckpt"
+    main(model_path)

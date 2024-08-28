@@ -72,9 +72,10 @@ def mask_sentence(sent, word, pos):
 
 
 class BenchLSDataset(Dataset):
-    def __init__(self, data, tokenizer):
+    def __init__(self, data, tokenizer, mask: bool = False):
         self._data = data
         self._tokenizer = tokenizer
+        self._mask = mask
 
     def __len__(self):
         return len(self._data)
@@ -89,6 +90,8 @@ class BenchLSDataset(Dataset):
             return_tensors="pt",
         )
         pos = torch.where(inp["input_ids"] == self._tokenizer.mask_token_id)[1]
+        if not self._mask:
+            inp["input_ids"][0][pos] = self._tokenizer.convert_tokens_to_ids(word)
         inp["positions"] = pos
 
         # TODO: use ranks to weight targets
@@ -122,6 +125,7 @@ class BenchLSDataModule(pl.LightningDataModule):
         batch_size: int,
         num_workers: int = -1,
         augment: bool = True,
+        mask: bool = False,
     ):
         super().__init__()
         self._tokenizer = tokenizer
@@ -130,11 +134,12 @@ class BenchLSDataModule(pl.LightningDataModule):
         self._batch_size = batch_size
         self._num_workers = num_workers if num_workers > 0 else os.cpu_count()
         self._augment = augment
+        self._mask = mask
 
     def setup(self, stage: str):
         train, val = load_benchls(self._path, self._train_val_split, augment=self._augment)
-        self.train = BenchLSDataset(train, self._tokenizer)
-        self.val = BenchLSDataset(val, self._tokenizer)
+        self.train = BenchLSDataset(train, self._tokenizer, mask=self._mask)
+        self.val = BenchLSDataset(val, self._tokenizer, mask=self._mask)
 
     def train_dataloader(self):
         return DataLoader(
@@ -165,7 +170,7 @@ class TaggedLS(DistilBertPreTrainedModel):
 
 
 class LexicalSimplificationModule(pl.LightningModule):
-    def __init__(self, model_name="distilbert-base-uncased", freeze: bool = True, lr=2e-5):
+    def __init__(self, model_name="distilbert-base-uncased", freeze: bool = True, lr=2e-5, top_k=10):
         super().__init__()
 
         self._lr = lr
@@ -175,9 +180,10 @@ class LexicalSimplificationModule(pl.LightningModule):
                 param.requires_grad = False
         self.loss_fn = nn.BCEWithLogitsLoss()
 
-        self.rmap = RetrievalMAP(top_k=10)
-        self.rprec = RetrievalPrecision(top_k=10)
-        self.rrec = RetrievalRecall(top_k=10)
+        self._top_k = top_k
+        self.rmap = RetrievalMAP(top_k=top_k)
+        self.rprec = RetrievalPrecision(top_k=top_k)
+        self.rrec = RetrievalRecall(top_k=top_k)
 
     def forward(self, input_ids, attention_mask=None):
         return self.model(input_ids, attention_mask=attention_mask)
@@ -203,9 +209,9 @@ class LexicalSimplificationModule(pl.LightningModule):
         self.rmap(preds, targets, indexes=indexes)
         self.rprec(preds, targets, indexes=indexes)
         self.rrec(preds, targets, indexes=indexes)
-        self.log("val/rMAP", self.rmap, on_step=False, on_epoch=True)
-        self.log("val/rPrec", self.rprec, on_step=False, on_epoch=True)
-        self.log("val/rRec", self.rrec, on_step=False, on_epoch=True)
+        self.log(f"val/rMAP@k={self._top_k}", self.rmap, on_step=False, on_epoch=True)
+        self.log(f"val/rPrec@k={self._top_k}", self.rprec, on_step=False, on_epoch=True)
+        self.log(f"val/rRec@k={self._top_k}", self.rrec, on_step=False, on_epoch=True)
 
         return loss
 
@@ -229,7 +235,7 @@ def main(cfg: DictConfig):
         overfit_batches=cfg.overfit_batches,
     )
 
-    module = LexicalSimplificationModule(cfg.model_name, freeze=cfg.freeze, lr=cfg.lr)
+    module = LexicalSimplificationModule(cfg.model_name, freeze=cfg.freeze, lr=cfg.lr, top_k=cfg.top_k)
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name, clean_up_tokenization_spaces=True)
     dm = instantiate(cfg.data, tokenizer=tokenizer)
     trainer.fit(module, dm)
