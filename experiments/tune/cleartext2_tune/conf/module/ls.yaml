@@ -1,0 +1,5 @@
+_target_: cleartext2_tune.module.LSModule
+model_name: distilbert-base-uncased
+freeze: True
+lr: ${lr}
+top_k: ${top_k}
