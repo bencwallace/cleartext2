@@ -239,7 +239,3 @@ def main(cfg: DictConfig):
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name, clean_up_tokenization_spaces=True)
     dm = instantiate(cfg.data, tokenizer=tokenizer)
     trainer.fit(module, dm)
-
-
-if __name__ == "__main__":
-    main()
